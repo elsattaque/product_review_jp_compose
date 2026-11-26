@@ -27,6 +27,11 @@ import androidx.compose.ui.unit.dp
 import com.example.productexplorer.ui.theme.ProductExplorerTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
@@ -638,19 +643,37 @@ fun ProductListItem(
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = onFavoriteClick) {
+            if (product.stock == 0) {
                 Text(
-                    text = if (isFavorite) {
-                        "Retirer des favoris"
-                    } else {
-                        "Ajouter aux favoris"
-                    }
+                    text = "Rupture de stock",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.error
                 )
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(onClick = onClick) {
+                    Text(text = "Voir le produit")
+                }
 
-            Button(onClick = onClick) {
-                Text(text = "Voir le produit")
+                IconButton(onClick = onFavoriteClick) {
+                    Icon(
+                        imageVector = if (isFavorite) {
+                            Icons.Default.Favorite
+                        } else {
+                            Icons.Default.FavoriteBorder
+                        },
+                        contentDescription = if (isFavorite) {
+                            "Retirer des favoris"
+                        } else {
+                            "Ajouter aux favoris"
+                        }
+                    )
+                }
             }
         }
     }
@@ -690,7 +713,17 @@ fun ProductCatalogContainer(
         mutableStateOf(listOf<Int>())
     }
 
-    val filteredProducts = remember(products, searchQuery, showOnlyInStock) {
+    var showOnlyFavorites by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    val filteredProducts = remember(
+        products,
+        searchQuery,
+        showOnlyInStock,
+        showOnlyFavorites,
+        favoriteProductIds
+    ) {
         products.filter { product ->
             val matchesSearch =
                 product.title.contains(searchQuery, ignoreCase = true) ||
@@ -700,7 +733,10 @@ fun ProductCatalogContainer(
             val matchesStock =
                 !showOnlyInStock || product.stock > 0
 
-            matchesSearch && matchesStock
+            val matchesFavorites =
+                !showOnlyFavorites || favoriteProductIds.contains(product.id)
+
+            matchesSearch && matchesStock && matchesFavorites
         }
     }
 
@@ -723,6 +759,10 @@ fun ProductCatalogContainer(
         onToggleStockFilter = {
             showOnlyInStock = !showOnlyInStock
         },
+        showOnlyFavorites = showOnlyFavorites,
+        onToggleFavoritesFilter = {
+            showOnlyFavorites = !showOnlyFavorites
+        },
         favoriteProductIds = favoriteProductIds,
         onFavoriteClick = { productId ->
             toggleFavorite(productId)
@@ -740,6 +780,8 @@ fun ProductCatalogScreen(
     onSearchQueryChange: (String) -> Unit,
     showOnlyInStock: Boolean,
     onToggleStockFilter: () -> Unit,
+    showOnlyFavorites: Boolean,
+    onToggleFavoritesFilter: () -> Unit,
     favoriteProductIds: List<Int>,
     onFavoriteClick: (Int) -> Unit,
     onProductClick: (ProductUi) -> Unit,
@@ -767,6 +809,26 @@ fun ProductCatalogScreen(
                 label = {
                     Text(text = "Rechercher un produit")
                 },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                onSearchQueryChange("")
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Effacer la recherche"
+                            )
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -786,10 +848,33 @@ fun ProductCatalogScreen(
         }
 
         item {
-            Text(
-                text = "${products.size} produit(s) affiché(s)",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Button(
+                onClick = onToggleFavoritesFilter
+            ) {
+                Text(
+                    text = if (showOnlyFavorites) {
+                        "Désactiver le filtre favoris"
+                    } else {
+                        "Afficher uniquement les favoris"
+                    }
+                )
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "${products.size} produit(s) affiché(s)",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "${favoriteProductIds.size} favori(s)",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
 
         item {
@@ -801,6 +886,15 @@ fun ProductCatalogScreen(
 
         item {
             CategoryRow(categories = categories)
+        }
+
+        if (products.isEmpty()) {
+            item {
+                Text(
+                    text = "Aucun produit ne correspond à votre recherche",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
 
         items(
@@ -862,6 +956,8 @@ fun ProductCatalogScreenStatelessPreview() {
             onSearchQueryChange = {},
             showOnlyInStock = false,
             onToggleStockFilter = {},
+            showOnlyFavorites = false,
+            onToggleFavoritesFilter = {},
             favoriteProductIds = listOf(1),
             onFavoriteClick = {},
             onProductClick = {}
