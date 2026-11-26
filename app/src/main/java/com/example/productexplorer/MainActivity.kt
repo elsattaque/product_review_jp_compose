@@ -43,8 +43,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 
@@ -692,57 +695,111 @@ fun CategoryRow(
     }
 }
 
+data class ProductCatalogUiState(
+    val products: List<ProductUi> = emptyList(),
+    val categories: List<String> = emptyList(),
+    val searchQuery: String = "",
+    val showOnlyInStock: Boolean = false,
+    val favoriteProductIds: List<Int> = emptyList(),
+    val showOnlyFavorites: Boolean = false
+)
+
 class ProductCatalogViewModel : ViewModel() {
-
     private val allProducts: List<ProductUi> = sampleProducts()
+    private val allCategories: List<String> = sampleCategories()
 
-    val categories: List<String> = sampleCategories()
+    private val _uiState = MutableStateFlow(
+        ProductCatalogUiState(
+            products = allProducts,
+            categories = allCategories
+        )
+    )
 
-    var searchQuery by mutableStateOf("")
-        private set
+    val uiState: StateFlow<ProductCatalogUiState> = _uiState.asStateFlow()
 
-    var showOnlyInStock by mutableStateOf(false)
-        private set
-
-    var favoriteProductIds by mutableStateOf(listOf<Int>())
-        private set
-
-    var showOnlyFavorites by mutableStateOf(false)
-        private set
-
-    val filteredProducts: List<ProductUi>
-        get() = allProducts.filter { product ->
+    private fun filterProducts(
+        searchQuery: String,
+        showOnlyInStock: Boolean,
+        showOnlyFavorites: Boolean,
+        favoriteProductIds: List<Int>
+    ): List<ProductUi> {
+        return allProducts.filter { product ->
             val matchesSearch =
                 product.title.contains(searchQuery, ignoreCase = true) ||
                         product.brand.contains(searchQuery, ignoreCase = true) ||
                         product.category.contains(searchQuery, ignoreCase = true)
-
             val matchesStock =
                 !showOnlyInStock || product.stock > 0
-
             val matchesFavorites =
                 !showOnlyFavorites || favoriteProductIds.contains(product.id)
-
             matchesSearch && matchesStock && matchesFavorites
         }
+    }
 
     fun onSearchQueryChange(newValue: String) {
-        searchQuery = newValue
+        _uiState.update { currentState ->
+            currentState.copy(
+                searchQuery = newValue,
+                products = filterProducts(
+                    searchQuery = newValue,
+                    showOnlyInStock = currentState.showOnlyInStock,
+                    showOnlyFavorites = currentState.showOnlyFavorites,
+                    favoriteProductIds = currentState.favoriteProductIds
+                )
+            )
+        }
     }
 
     fun onToggleStockFilter() {
-        showOnlyInStock = !showOnlyInStock
+        _uiState.update { currentState ->
+            val newShowOnlyInStock = !currentState.showOnlyInStock
+
+            currentState.copy(
+                showOnlyInStock = newShowOnlyInStock,
+                products = filterProducts(
+                    searchQuery = currentState.searchQuery,
+                    showOnlyInStock = newShowOnlyInStock,
+                    showOnlyFavorites = currentState.showOnlyFavorites,
+                    favoriteProductIds = currentState.favoriteProductIds
+                )
+            )
+        }
     }
 
     fun onToggleFavoritesFilter() {
-        showOnlyFavorites = !showOnlyFavorites
+        _uiState.update { currentState ->
+            val newShowOnlyFavorites = !currentState.showOnlyFavorites
+
+            currentState.copy(
+                showOnlyFavorites = newShowOnlyFavorites,
+                products = filterProducts(
+                    searchQuery = currentState.searchQuery,
+                    showOnlyInStock = currentState.showOnlyInStock,
+                    showOnlyFavorites = newShowOnlyFavorites,
+                    favoriteProductIds = currentState.favoriteProductIds
+                )
+            )
+        }
     }
 
     fun onFavoriteClick(productId: Int) {
-        favoriteProductIds = if (favoriteProductIds.contains(productId)) {
-            favoriteProductIds - productId
-        } else {
-            favoriteProductIds + productId
+        _uiState.update { currentState ->
+            val newFavoriteIds =
+                if (currentState.favoriteProductIds.contains(productId)) {
+                    currentState.favoriteProductIds - productId
+                } else {
+                    currentState.favoriteProductIds + productId
+                }
+
+            currentState.copy(
+                favoriteProductIds = newFavoriteIds,
+                products = filterProducts(
+                    searchQuery = currentState.searchQuery,
+                    showOnlyInStock = currentState.showOnlyInStock,
+                    showOnlyFavorites = currentState.showOnlyFavorites,
+                    favoriteProductIds = newFavoriteIds
+                )
+            )
         }
     }
 }
@@ -753,16 +810,18 @@ fun ProductCatalogContainer(
     modifier: Modifier = Modifier,
     viewModel: ProductCatalogViewModel = viewModel()
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+
     ProductCatalogScreen(
-        products = viewModel.filteredProducts,
-        categories = viewModel.categories,
-        searchQuery = viewModel.searchQuery,
+        products = uiState.products,
+        categories = uiState.categories,
+        searchQuery = uiState.searchQuery,
         onSearchQueryChange = viewModel::onSearchQueryChange,
-        showOnlyInStock = viewModel.showOnlyInStock,
+        showOnlyInStock = uiState.showOnlyInStock,
         onToggleStockFilter = viewModel::onToggleStockFilter,
-        showOnlyFavorites = viewModel.showOnlyFavorites,
+        showOnlyFavorites = uiState.showOnlyFavorites,
         onToggleFavoritesFilter = viewModel::onToggleFavoritesFilter,
-        favoriteProductIds = viewModel.favoriteProductIds,
+        favoriteProductIds = uiState.favoriteProductIds,
         onFavoriteClick = viewModel::onFavoriteClick,
         onProductClick = onProductClick,
         modifier = modifier
