@@ -31,6 +31,11 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -194,19 +199,39 @@ fun CategoriesSection(
 @Composable
 fun CategoryChip(
     label: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    onClick: () -> Unit = {}
 ) {
     Surface(
+        onClick = onClick,
         modifier = modifier,
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.secondary,
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.secondary
+        },
         contentColor = MaterialTheme.colorScheme.onPrimary
     ) {
-        Text(
-            text = label,
+        Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge
-        )
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(16.dp)
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
     }
 }
 
@@ -683,6 +708,8 @@ fun ProductListItem(
 @Composable
 fun CategoryRow(
     categories: List<String>,
+    selectedCategory: String?,
+    onCategoryClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -690,7 +717,74 @@ fun CategoryRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(categories) { category ->
-            CategoryChip(label = category)
+            CategoryChip(
+                label = category,
+                isSelected = category == selectedCategory,
+                onClick = {
+                    onCategoryClick(category)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun FilterSwitchRow(
+    label: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = {
+                onToggle()
+            }
+        )
+    }
+}
+
+enum class SortOrder {
+    NONE,
+    PRICE_ASC,
+    PRICE_DESC
+}
+
+@Composable
+fun SortOrderRow(
+    sortOrder: SortOrder,
+    onSortOrderChange: (SortOrder) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(SortOrder.entries) { order ->
+            FilterChip(
+                selected = order == sortOrder,
+                onClick = {
+                    onSortOrderChange(order)
+                },
+                label = {
+                    Text(
+                        text = when (order) {
+                            SortOrder.NONE -> "Par défaut"
+                            SortOrder.PRICE_ASC -> "Prix croissant"
+                            SortOrder.PRICE_DESC -> "Prix décroissant"
+                        }
+                    )
+                }
+            )
         }
     }
 }
@@ -701,7 +795,9 @@ data class ProductCatalogUiState(
     val searchQuery: String = "",
     val showOnlyInStock: Boolean = false,
     val favoriteProductIds: List<Int> = emptyList(),
-    val showOnlyFavorites: Boolean = false
+    val showOnlyFavorites: Boolean = false,
+    val selectedCategory: String? = null,
+    val sortOrder: SortOrder = SortOrder.NONE
 )
 
 class ProductCatalogViewModel : ViewModel() {
@@ -721,9 +817,11 @@ class ProductCatalogViewModel : ViewModel() {
         searchQuery: String,
         showOnlyInStock: Boolean,
         showOnlyFavorites: Boolean,
-        favoriteProductIds: List<Int>
+        favoriteProductIds: List<Int>,
+        selectedCategory: String?,
+        sortOrder: SortOrder
     ): List<ProductUi> {
-        return allProducts.filter { product ->
+        val filteredProducts = allProducts.filter { product ->
             val matchesSearch =
                 product.title.contains(searchQuery, ignoreCase = true) ||
                         product.brand.contains(searchQuery, ignoreCase = true) ||
@@ -732,7 +830,24 @@ class ProductCatalogViewModel : ViewModel() {
                 !showOnlyInStock || product.stock > 0
             val matchesFavorites =
                 !showOnlyFavorites || favoriteProductIds.contains(product.id)
-            matchesSearch && matchesStock && matchesFavorites
+            val matchesCategory =
+                selectedCategory == null || product.category == selectedCategory
+            matchesSearch && matchesStock && matchesFavorites && matchesCategory
+        }
+        return sortProducts(
+            products = filteredProducts,
+            sortOrder = sortOrder
+        )
+    }
+
+    private fun sortProducts(
+        products: List<ProductUi>,
+        sortOrder: SortOrder
+    ): List<ProductUi> {
+        return when (sortOrder) {
+            SortOrder.NONE -> products
+            SortOrder.PRICE_ASC -> products.sortedBy { product -> product.price }
+            SortOrder.PRICE_DESC -> products.sortedByDescending { product -> product.price }
         }
     }
 
@@ -744,7 +859,9 @@ class ProductCatalogViewModel : ViewModel() {
                     searchQuery = newValue,
                     showOnlyInStock = currentState.showOnlyInStock,
                     showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds
+                    favoriteProductIds = currentState.favoriteProductIds,
+                    selectedCategory = currentState.selectedCategory,
+                    sortOrder = currentState.sortOrder
                 )
             )
         }
@@ -760,7 +877,9 @@ class ProductCatalogViewModel : ViewModel() {
                     searchQuery = currentState.searchQuery,
                     showOnlyInStock = newShowOnlyInStock,
                     showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds
+                    favoriteProductIds = currentState.favoriteProductIds,
+                    selectedCategory = currentState.selectedCategory,
+                    sortOrder = currentState.sortOrder
                 )
             )
         }
@@ -776,7 +895,9 @@ class ProductCatalogViewModel : ViewModel() {
                     searchQuery = currentState.searchQuery,
                     showOnlyInStock = currentState.showOnlyInStock,
                     showOnlyFavorites = newShowOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds
+                    favoriteProductIds = currentState.favoriteProductIds,
+                    selectedCategory = currentState.selectedCategory,
+                    sortOrder = currentState.sortOrder
                 )
             )
         }
@@ -797,7 +918,67 @@ class ProductCatalogViewModel : ViewModel() {
                     searchQuery = currentState.searchQuery,
                     showOnlyInStock = currentState.showOnlyInStock,
                     showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = newFavoriteIds
+                    favoriteProductIds = newFavoriteIds,
+                    selectedCategory = currentState.selectedCategory,
+                    sortOrder = currentState.sortOrder
+                )
+            )
+        }
+    }
+
+    fun onCategoryClick(category: String) {
+        _uiState.update { currentState ->
+            val newSelectedCategory =
+                if (currentState.selectedCategory == category) {
+                    null
+                } else {
+                    category
+                }
+
+            currentState.copy(
+                selectedCategory = newSelectedCategory,
+                products = filterProducts(
+                    searchQuery = currentState.searchQuery,
+                    showOnlyInStock = currentState.showOnlyInStock,
+                    showOnlyFavorites = currentState.showOnlyFavorites,
+                    favoriteProductIds = currentState.favoriteProductIds,
+                    selectedCategory = newSelectedCategory,
+                    sortOrder = currentState.sortOrder
+                )
+            )
+        }
+    }
+
+    fun onSortOrderChange(newSortOrder: SortOrder) {
+        _uiState.update { currentState ->
+            currentState.copy(
+                sortOrder = newSortOrder,
+                products = filterProducts(
+                    searchQuery = currentState.searchQuery,
+                    showOnlyInStock = currentState.showOnlyInStock,
+                    showOnlyFavorites = currentState.showOnlyFavorites,
+                    favoriteProductIds = currentState.favoriteProductIds,
+                    selectedCategory = currentState.selectedCategory,
+                    sortOrder = newSortOrder
+                )
+            )
+        }
+    }
+
+    fun onResetFilters() {
+        _uiState.update { currentState ->
+            currentState.copy(
+                searchQuery = "",
+                showOnlyInStock = false,
+                showOnlyFavorites = false,
+                selectedCategory = null,
+                products = filterProducts(
+                    searchQuery = "",
+                    showOnlyInStock = false,
+                    showOnlyFavorites = false,
+                    favoriteProductIds = currentState.favoriteProductIds,
+                    selectedCategory = null,
+                    sortOrder = currentState.sortOrder
                 )
             )
         }
@@ -815,12 +996,17 @@ fun ProductCatalogContainer(
     ProductCatalogScreen(
         products = uiState.products,
         categories = uiState.categories,
+        selectedCategory = uiState.selectedCategory,
+        onCategoryClick = viewModel::onCategoryClick,
         searchQuery = uiState.searchQuery,
         onSearchQueryChange = viewModel::onSearchQueryChange,
         showOnlyInStock = uiState.showOnlyInStock,
         onToggleStockFilter = viewModel::onToggleStockFilter,
         showOnlyFavorites = uiState.showOnlyFavorites,
         onToggleFavoritesFilter = viewModel::onToggleFavoritesFilter,
+        sortOrder = uiState.sortOrder,
+        onSortOrderChange = viewModel::onSortOrderChange,
+        onResetFilters = viewModel::onResetFilters,
         favoriteProductIds = uiState.favoriteProductIds,
         onFavoriteClick = viewModel::onFavoriteClick,
         onProductClick = onProductClick,
@@ -832,17 +1018,28 @@ fun ProductCatalogContainer(
 fun ProductCatalogScreen(
     products: List<ProductUi>,
     categories: List<String>,
+    selectedCategory: String?,
+    onCategoryClick: (String) -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     showOnlyInStock: Boolean,
     onToggleStockFilter: () -> Unit,
     showOnlyFavorites: Boolean,
     onToggleFavoritesFilter: () -> Unit,
+    sortOrder: SortOrder,
+    onSortOrderChange: (SortOrder) -> Unit,
+    onResetFilters: () -> Unit,
     favoriteProductIds: List<Int>,
     onFavoriteClick: (Int) -> Unit,
     onProductClick: (ProductUi) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val hasActiveFilters =
+        searchQuery.isNotEmpty() ||
+                showOnlyInStock ||
+                showOnlyFavorites ||
+                selectedCategory != null
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -890,31 +1087,26 @@ fun ProductCatalogScreen(
         }
 
         item {
-            Button(
-                onClick = onToggleStockFilter
-            ) {
-                Text(
-                    text = if (showOnlyInStock) {
-                        "Afficher tous les produits"
-                    } else {
-                        "Afficher uniquement les produits en stock"
-                    }
-                )
-            }
+            FilterSwitchRow(
+                label = "Uniquement les produits en stock",
+                checked = showOnlyInStock,
+                onToggle = onToggleStockFilter
+            )
         }
 
         item {
-            Button(
-                onClick = onToggleFavoritesFilter
-            ) {
-                Text(
-                    text = if (showOnlyFavorites) {
-                        "Désactiver le filtre favoris"
-                    } else {
-                        "Afficher uniquement les favoris"
-                    }
-                )
-            }
+            FilterSwitchRow(
+                label = "Uniquement les favoris",
+                checked = showOnlyFavorites,
+                onToggle = onToggleFavoritesFilter
+            )
+        }
+
+        item {
+            SortOrderRow(
+                sortOrder = sortOrder,
+                onSortOrderChange = onSortOrderChange
+            )
         }
 
         item {
@@ -941,7 +1133,20 @@ fun ProductCatalogScreen(
         }
 
         item {
-            CategoryRow(categories = categories)
+            CategoryRow(
+                categories = categories,
+                selectedCategory = selectedCategory,
+                onCategoryClick = onCategoryClick
+            )
+        }
+
+        item {
+            OutlinedButton(
+                onClick = onResetFilters,
+                enabled = hasActiveFilters
+            ) {
+                Text(text = "Réinitialiser les filtres")
+            }
         }
 
         if (products.isEmpty()) {
@@ -981,12 +1186,17 @@ fun ProductCatalogScreenLightPreview() {
         ProductCatalogScreen(
             products = sampleProducts(),
             categories = sampleCategories(),
+            selectedCategory = null,
+            onCategoryClick = {},
             searchQuery = "",
             onSearchQueryChange = {},
             showOnlyInStock = false,
             onToggleStockFilter = {},
             showOnlyFavorites = false,
             onToggleFavoritesFilter = {},
+            sortOrder = SortOrder.NONE,
+            onSortOrderChange = {},
+            onResetFilters = {},
             favoriteProductIds = listOf(1),
             onFavoriteClick = {},
             onProductClick = {}
@@ -1004,12 +1214,17 @@ fun ProductCatalogScreenDarkPreview() {
         ProductCatalogScreen(
             products = sampleProducts(),
             categories = sampleCategories(),
+            selectedCategory = "Audio",
+            onCategoryClick = {},
             searchQuery = "audio",
             onSearchQueryChange = {},
             showOnlyInStock = true,
             onToggleStockFilter = {},
             showOnlyFavorites = false,
             onToggleFavoritesFilter = {},
+            sortOrder = SortOrder.PRICE_ASC,
+            onSortOrderChange = {},
+            onResetFilters = {},
             favoriteProductIds = listOf(2),
             onFavoriteClick = {},
             onProductClick = {}
