@@ -813,30 +813,23 @@ class ProductCatalogViewModel : ViewModel() {
 
     val uiState: StateFlow<ProductCatalogUiState> = _uiState.asStateFlow()
 
-    private fun filterProducts(
-        searchQuery: String,
-        showOnlyInStock: Boolean,
-        showOnlyFavorites: Boolean,
-        favoriteProductIds: List<Int>,
-        selectedCategory: String?,
-        sortOrder: SortOrder
-    ): List<ProductUi> {
+    private fun filterProducts(state: ProductCatalogUiState): List<ProductUi> {
         val filteredProducts = allProducts.filter { product ->
             val matchesSearch =
-                product.title.contains(searchQuery, ignoreCase = true) ||
-                        product.brand.contains(searchQuery, ignoreCase = true) ||
-                        product.category.contains(searchQuery, ignoreCase = true)
+                product.title.contains(state.searchQuery, ignoreCase = true) ||
+                        product.brand.contains(state.searchQuery, ignoreCase = true) ||
+                        product.category.contains(state.searchQuery, ignoreCase = true)
             val matchesStock =
-                !showOnlyInStock || product.stock > 0
+                !state.showOnlyInStock || product.stock > 0
             val matchesFavorites =
-                !showOnlyFavorites || favoriteProductIds.contains(product.id)
+                !state.showOnlyFavorites || state.favoriteProductIds.contains(product.id)
             val matchesCategory =
-                selectedCategory == null || product.category == selectedCategory
+                state.selectedCategory == null || product.category == state.selectedCategory
             matchesSearch && matchesStock && matchesFavorites && matchesCategory
         }
         return sortProducts(
             products = filteredProducts,
-            sortOrder = sortOrder
+            sortOrder = state.sortOrder
         )
     }
 
@@ -853,53 +846,26 @@ class ProductCatalogViewModel : ViewModel() {
 
     fun onSearchQueryChange(newValue: String) {
         _uiState.update { currentState ->
-            currentState.copy(
-                searchQuery = newValue,
-                products = filterProducts(
-                    searchQuery = newValue,
-                    showOnlyInStock = currentState.showOnlyInStock,
-                    showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds,
-                    selectedCategory = currentState.selectedCategory,
-                    sortOrder = currentState.sortOrder
-                )
-            )
+            val newState = currentState.copy(searchQuery = newValue)
+            newState.copy(products = filterProducts(newState))
         }
     }
 
     fun onToggleStockFilter() {
         _uiState.update { currentState ->
-            val newShowOnlyInStock = !currentState.showOnlyInStock
-
-            currentState.copy(
-                showOnlyInStock = newShowOnlyInStock,
-                products = filterProducts(
-                    searchQuery = currentState.searchQuery,
-                    showOnlyInStock = newShowOnlyInStock,
-                    showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds,
-                    selectedCategory = currentState.selectedCategory,
-                    sortOrder = currentState.sortOrder
-                )
+            val newState = currentState.copy(
+                showOnlyInStock = !currentState.showOnlyInStock
             )
+            newState.copy(products = filterProducts(newState))
         }
     }
 
     fun onToggleFavoritesFilter() {
         _uiState.update { currentState ->
-            val newShowOnlyFavorites = !currentState.showOnlyFavorites
-
-            currentState.copy(
-                showOnlyFavorites = newShowOnlyFavorites,
-                products = filterProducts(
-                    searchQuery = currentState.searchQuery,
-                    showOnlyInStock = currentState.showOnlyInStock,
-                    showOnlyFavorites = newShowOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds,
-                    selectedCategory = currentState.selectedCategory,
-                    sortOrder = currentState.sortOrder
-                )
+            val newState = currentState.copy(
+                showOnlyFavorites = !currentState.showOnlyFavorites
             )
+            newState.copy(products = filterProducts(newState))
         }
     }
 
@@ -912,17 +878,8 @@ class ProductCatalogViewModel : ViewModel() {
                     currentState.favoriteProductIds + productId
                 }
 
-            currentState.copy(
-                favoriteProductIds = newFavoriteIds,
-                products = filterProducts(
-                    searchQuery = currentState.searchQuery,
-                    showOnlyInStock = currentState.showOnlyInStock,
-                    showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = newFavoriteIds,
-                    selectedCategory = currentState.selectedCategory,
-                    sortOrder = currentState.sortOrder
-                )
-            )
+            val newState = currentState.copy(favoriteProductIds = newFavoriteIds)
+            newState.copy(products = filterProducts(newState))
         }
     }
 
@@ -935,52 +892,27 @@ class ProductCatalogViewModel : ViewModel() {
                     category
                 }
 
-            currentState.copy(
-                selectedCategory = newSelectedCategory,
-                products = filterProducts(
-                    searchQuery = currentState.searchQuery,
-                    showOnlyInStock = currentState.showOnlyInStock,
-                    showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds,
-                    selectedCategory = newSelectedCategory,
-                    sortOrder = currentState.sortOrder
-                )
-            )
+            val newState = currentState.copy(selectedCategory = newSelectedCategory)
+            newState.copy(products = filterProducts(newState))
         }
     }
 
     fun onSortOrderChange(newSortOrder: SortOrder) {
         _uiState.update { currentState ->
-            currentState.copy(
-                sortOrder = newSortOrder,
-                products = filterProducts(
-                    searchQuery = currentState.searchQuery,
-                    showOnlyInStock = currentState.showOnlyInStock,
-                    showOnlyFavorites = currentState.showOnlyFavorites,
-                    favoriteProductIds = currentState.favoriteProductIds,
-                    selectedCategory = currentState.selectedCategory,
-                    sortOrder = newSortOrder
-                )
-            )
+            val newState = currentState.copy(sortOrder = newSortOrder)
+            newState.copy(products = filterProducts(newState))
         }
     }
 
     fun onResetFilters() {
         _uiState.update { currentState ->
-            currentState.copy(
+            val newState = currentState.copy(
                 searchQuery = "",
                 showOnlyInStock = false,
                 showOnlyFavorites = false,
-                selectedCategory = null,
-                products = filterProducts(
-                    searchQuery = "",
-                    showOnlyInStock = false,
-                    showOnlyFavorites = false,
-                    favoriteProductIds = currentState.favoriteProductIds,
-                    selectedCategory = null,
-                    sortOrder = currentState.sortOrder
-                )
+                selectedCategory = null
             )
+            newState.copy(products = filterProducts(newState))
         }
     }
 }
